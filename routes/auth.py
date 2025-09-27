@@ -1,13 +1,10 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token
-from models import db, User
+from models import db, User, RefreshToken
 from schemas import UserRegistrationSchema, UserLoginSchema
 from limiter import limiter
 import secrets
 from datetime import datetime, timedelta
-
-# In-memory storage for refresh tokens (use Redis or database in production)
-refresh_tokens = {}
 
 class RefreshTokenManager:
     @staticmethod
@@ -18,33 +15,40 @@ class RefreshTokenManager:
     @staticmethod
     def store_refresh_token(user_id, refresh_token, expires_at):
         """Store refresh token with expiration"""
-        refresh_tokens[refresh_token] = {
-            'user_id': user_id,
-            'expires_at': expires_at,
-            'created_at': datetime.utcnow()
-        }
+        # Revoke existing refresh tokens for this user
+        RefreshToken.query.filter_by(user_id=user_id).delete()
+
+        token = RefreshToken(
+            token=refresh_token,
+            user_id=user_id,
+            expires_at=expires_at
+        )
+        db.session.add(token)
+        db.session.commit()
 
     @staticmethod
     def validate_refresh_token(refresh_token):
         """Validate refresh token and return user_id if valid"""
-        if refresh_token not in refresh_tokens:
+        token = RefreshToken.query.filter_by(token=refresh_token).first()
+        if not token:
             return None
-
-        token_data = refresh_tokens[refresh_token]
 
         # Check if token has expired
-        if datetime.utcnow() > token_data['expires_at']:
+        if datetime.utcnow() > token.expires_at:
             # Remove expired token
-            del refresh_tokens[refresh_token]
+            db.session.delete(token)
+            db.session.commit()
             return None
 
-        return token_data['user_id']
+        return token.user_id
 
     @staticmethod
     def revoke_refresh_token(refresh_token):
         """Revoke a refresh token"""
-        if refresh_token in refresh_tokens:
-            del refresh_tokens[refresh_token]
+        token = RefreshToken.query.filter_by(token=refresh_token).first()
+        if token:
+            db.session.delete(token)
+            db.session.commit()
 
 auth_bp = Blueprint('auth', __name__)
 

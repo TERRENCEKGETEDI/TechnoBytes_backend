@@ -200,6 +200,25 @@ class Notification(db.Model):
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class RefreshToken(db.Model):
+    __tablename__ = 'refresh_tokens'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    token = db.Column(db.String(255), unique=True, nullable=False)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = db.relationship('User', backref='refresh_tokens', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'token': self.token,
+            'user_id': self.user_id,
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
     def to_dict(self):
         return {
             'id': self.id,
