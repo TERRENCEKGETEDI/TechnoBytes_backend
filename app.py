@@ -24,12 +24,12 @@ from routes.profile import profile_bp
 from routes.verification import verification_bp
 
 app.register_blueprint(auth_bp, url_prefix='/auth')
-app.register_blueprint(services_bp, url_prefix='/api/services')
-app.register_blueprint(requests_bp, url_prefix='/api/requests')
-app.register_blueprint(categories_bp, url_prefix='/api/categories')
-app.register_blueprint(feedback_bp, url_prefix='/api/feedback')
-app.register_blueprint(profile_bp, url_prefix='/api/profile')
-app.register_blueprint(verification_bp, url_prefix='/api/verification')
+app.register_blueprint(services_bp, url_prefix='/services')
+app.register_blueprint(requests_bp, url_prefix='/requests')
+app.register_blueprint(categories_bp, url_prefix='/categories')
+app.register_blueprint(feedback_bp, url_prefix='/feedback')
+app.register_blueprint(profile_bp, url_prefix='/profile')
+app.register_blueprint(verification_bp, url_prefix='/verification')
 
 @app.route('/')
 def health_check():
