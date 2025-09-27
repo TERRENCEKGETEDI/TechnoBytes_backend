@@ -10,4 +10,5 @@ class Config:
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'default_secret')
     JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', 604800))  # 7 days
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
+    HOME_AFFAIRS_API_BASE = os.getenv('HOME_AFFAIRS_API_BASE', 'https://api.example.com')
     PORT = int(os.getenv('PORT', 4000))

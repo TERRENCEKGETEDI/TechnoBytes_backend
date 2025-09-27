@@ -1,202 +1,212 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Enum
 import bcrypt
+import uuid
+from datetime import datetime
 
 db = SQLAlchemy()
 
 class User(db.Model):
-    __tablename__ = 'Users'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    fullName = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(100), nullable=False, unique=True)
-    phoneNumber = db.Column(db.String(20), nullable=False, unique=True)
-    passwordHash = db.Column(db.String(255), nullable=False)
-    role = db.Column(Enum('master', 'admin', 'provider', 'customer', name='user_role'), default='customer')
-    isVerified = db.Column(db.Boolean, default=False)
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+    __tablename__ = 'users'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(Enum('customer', 'provider', name='user_role'), nullable=False)
+    phone = db.Column(db.String(20))
+    location = db.Column(db.String(255))
+    avatar_url = db.Column(db.String(500))
+    rating = db.Column(db.Numeric(3, 2), default=0.00)
+    is_verified = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     services = db.relationship('Service', backref='provider', lazy=True)
-    service_requests = db.relationship('ServiceRequest', backref='customer', lazy=True, foreign_keys='ServiceRequest.customerId')
-    job_stat = db.relationship('JobStat', backref='provider', uselist=False)
-    messages = db.relationship('Message', backref='sender', lazy=True)
-    admin_approvals = db.relationship('AdminApproval', backref='admin', lazy=True, foreign_keys='AdminApproval.adminId')
-    password_resets = db.relationship('PasswordReset', backref='user', lazy=True)
+    sent_requests = db.relationship('ServiceRequest', backref='customer', lazy=True, foreign_keys='ServiceRequest.customer_id')
+    received_requests = db.relationship('ServiceRequest', backref='provider_rel', lazy=True, foreign_keys='ServiceRequest.provider_id')
+    feedbacks_given = db.relationship('Feedback', backref='customer', lazy=True, foreign_keys='Feedback.customer_id')
+    feedbacks_received = db.relationship('Feedback', backref='provider', lazy=True, foreign_keys='Feedback.provider_id')
+    notifications = db.relationship('Notification', backref='user', lazy=True)
+
+    def set_password(self, password):
+        self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
     def verify_password(self, password):
-        return bcrypt.checkpw(password.encode('utf-8'), self.passwordHash.encode('utf-8'))
+        return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
 
     def to_dict(self):
         return {
             'id': self.id,
-            'fullName': self.fullName,
+            'name': self.name,
             'email': self.email,
-            'phoneNumber': self.phoneNumber,
             'role': self.role,
-            'isVerified': self.isVerified,
-            'createdAt': self.createdAt.isoformat() if self.createdAt else None,
-            'updatedAt': self.updatedAt.isoformat() if self.updatedAt else None
+            'phone': self.phone,
+            'location': self.location,
+            'avatar_url': self.avatar_url,
+            'rating': float(self.rating) if self.rating else 0.0,
+            'is_verified': self.is_verified,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class ServiceCategory(db.Model):
+    __tablename__ = 'service_categories'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    icon = db.Column(db.String(50), nullable=False)
+    color = db.Column(db.String(7), nullable=False)
+    description = db.Column(db.Text)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    services = db.relationship('Service', backref='category', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'icon': self.icon,
+            'color': self.color,
+            'description': self.description,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 class Service(db.Model):
-    __tablename__ = 'Services'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    providerId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text)
-    category = db.Column(db.String(50))
+    __tablename__ = 'services'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    provider_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    category_id = db.Column(db.String(36), db.ForeignKey('service_categories.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    location = db.Column(db.String(255), nullable=False)
     price = db.Column(db.Numeric(10, 2))
-    location = db.Column(db.String(255))
-    imageUrl = db.Column(db.String(255))
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+    price_type = db.Column(Enum('hourly', 'fixed', 'negotiable', name='price_type'), nullable=False)
+    images = db.Column(db.JSON)
+    rating = db.Column(db.Numeric(3, 2), default=0.00)
+    review_count = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    service_requests = db.relationship('ServiceRequest', backref='service', lazy=True)
-    reviews = db.relationship('Review', backref='service', lazy=True)
+    requests = db.relationship('ServiceRequest', backref='service', lazy=True)
 
     def to_dict(self):
         return {
             'id': self.id,
-            'providerId': self.providerId,
-            'name': self.name,
+            'title': self.title,
             'description': self.description,
-            'category': self.category,
-            'price': float(self.price) if self.price else None,
+            'category': self.category.to_dict() if self.category else None,
+            'provider': {
+                'id': self.provider.id,
+                'name': self.provider.name,
+                'rating': float(self.provider.rating) if self.provider.rating else 0.0,
+                'location': self.provider.location
+            },
             'location': self.location,
-            'imageUrl': self.imageUrl,
-            'createdAt': self.createdAt.isoformat() if self.createdAt else None,
-            'updatedAt': self.updatedAt.isoformat() if self.updatedAt else None
+            'price': float(self.price) if self.price else None,
+            'price_type': self.price_type,
+            'images': self.images or [],
+            'rating': float(self.rating) if self.rating else 0.0,
+            'review_count': self.review_count,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 class ServiceRequest(db.Model):
-    __tablename__ = 'ServiceRequests'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    customerId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    serviceId = db.Column(db.Integer, db.ForeignKey('Services.id'), nullable=False)
-    requestType = db.Column(Enum('urgent', 'scheduled', name='request_type'), nullable=False)
-    scheduledTime = db.Column(db.DateTime)
-    status = db.Column(Enum('pending', 'accepted', 'completed', 'cancelled', name='request_status'), default='pending')
-    completedAt = db.Column(db.DateTime)
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'conversationId': self.conversationId,
-            'senderId': self.senderId,
-            'messageText': self.messageText,
-            'isRead': self.isRead,
-            'createdAt': self.createdAt.isoformat() if self.createdAt else None,
-            'updatedAt': self.updatedAt.isoformat() if self.updatedAt else None
-        }
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'requestId': self.requestId,
-            'customerId': self.customerId,
-            'providerId': self.providerId,
-            'amount': float(self.amount) if self.amount else None,
-            'status': self.status,
-            'createdAt': self.createdAt.isoformat() if self.createdAt else None,
-            'updatedAt': self.updatedAt.isoformat() if self.updatedAt else None
-        }
+    __tablename__ = 'service_requests'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    service_id = db.Column(db.String(36), db.ForeignKey('services.id'), nullable=False)
+    customer_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    provider_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    status = db.Column(Enum('pending', 'accepted', 'declined', 'completed', 'cancelled', name='request_status'), default='pending')
+    message = db.Column(db.Text)
+    requested_date = db.Column(db.Date)
+    estimated_duration = db.Column(db.Integer)
+    customer_phone = db.Column(db.String(20))
+    customer_email = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    payment = db.relationship('Payment', backref='service_request', uselist=False)
-    conversation = db.relationship('Conversation', backref='service_request', uselist=False)
+    feedback = db.relationship('Feedback', backref='service_request', uselist=False)
 
     def to_dict(self):
         return {
             'id': self.id,
-            'customerId': self.customerId,
-            'serviceId': self.serviceId,
-            'requestType': self.requestType,
-            'scheduledTime': self.scheduledTime.isoformat() if self.scheduledTime else None,
+            'service': {
+                'id': self.service.id,
+                'title': self.service.title,
+                'provider': {
+                    'id': self.service.provider.id,
+                    'name': self.service.provider.name
+                }
+            },
+            'customer': {
+                'id': self.customer.id,
+                'name': self.customer.name
+            },
+            'provider': {
+                'id': self.provider_rel.id,
+                'name': self.provider_rel.name
+            },
             'status': self.status,
-            'completedAt': self.completedAt.isoformat() if self.completedAt else None,
-            'createdAt': self.createdAt.isoformat() if self.createdAt else None,
-            'updatedAt': self.updatedAt.isoformat() if self.updatedAt else None
+            'message': self.message,
+            'requested_date': self.requested_date.isoformat() if self.requested_date else None,
+            'estimated_duration': self.estimated_duration,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
-class Payment(db.Model):
-    __tablename__ = 'Payments'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    requestId = db.Column(db.Integer, db.ForeignKey('ServiceRequests.id'), nullable=False)
-    customerId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    providerId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    amount = db.Column(db.Numeric(10, 2), nullable=False)
-    status = db.Column(Enum('pending', 'completed', 'failed', name='payment_status'), default='pending')
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
-
-class Review(db.Model):
-    __tablename__ = 'Reviews'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    serviceId = db.Column(db.Integer, db.ForeignKey('Services.id'), nullable=False)
-    customerId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
+class Feedback(db.Model):
+    __tablename__ = 'feedback'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    service_request_id = db.Column(db.String(36), db.ForeignKey('service_requests.id'), nullable=False)
+    customer_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    provider_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
     rating = db.Column(db.Integer, nullable=False)
     comment = db.Column(db.Text)
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
-
-class JobStat(db.Model):
-    __tablename__ = 'JobStats'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    providerId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False, unique=True)
-    totalJobs = db.Column(db.Integer, default=0)
-    totalEarnings = db.Column(db.Numeric(12, 2), default=0.0)
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
-
-class Conversation(db.Model):
-    __tablename__ = 'Conversations'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    requestId = db.Column(db.Integer, db.ForeignKey('ServiceRequests.id'), nullable=False)
-    customerId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    providerId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
-
-    # Relationships
-    messages = db.relationship('Message', backref='conversation', lazy=True)
+    is_public = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {
             'id': self.id,
-            'requestId': self.requestId,
-            'customerId': self.customerId,
-            'providerId': self.providerId,
-            'createdAt': self.createdAt.isoformat() if self.createdAt else None,
-            'updatedAt': self.updatedAt.isoformat() if self.updatedAt else None
+            'customer': {
+                'id': self.customer.id,
+                'name': self.customer.name
+            },
+            'rating': self.rating,
+            'comment': self.comment,
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
-class Message(db.Model):
-    __tablename__ = 'Messages'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    conversationId = db.Column(db.Integer, db.ForeignKey('Conversations.id'), nullable=False)
-    senderId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    messageText = db.Column(db.Text)
-    isRead = db.Column(db.Boolean, default=False)
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    type = db.Column(Enum('request', 'acceptance', 'decline', 'completion', 'feedback', 'system', name='notification_type'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    data = db.Column(db.JSON)
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-class AdminApproval(db.Model):
-    __tablename__ = 'AdminApprovals'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    adminId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    approvedBy = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
-
-class PasswordReset(db.Model):
-    __tablename__ = 'PasswordResets'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    userId = db.Column(db.Integer, db.ForeignKey('Users.id'), nullable=False)
-    resetToken = db.Column(db.String(255), nullable=False, unique=True)
-    resetBy = db.Column(db.Integer, db.ForeignKey('Users.id'))
-    createdAt = db.Column(db.DateTime, default=db.func.now())
-    updatedAt = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'type': self.type,
+            'title': self.title,
+            'message': self.message,
+            'data': self.data,
+            'is_read': self.is_read,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }

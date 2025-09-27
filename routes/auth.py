@@ -1,41 +1,40 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
-from models import db, User, JobStat
-import bcrypt
+from models import db, User
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    fullName = data.get('fullName')
+    name = data.get('name')
     email = data.get('email')
-    phoneNumber = data.get('phoneNumber')
     password = data.get('password')
     role = data.get('role', 'customer')
+    phone = data.get('phone')
+    location = data.get('location')
 
-    if not all([fullName, email, phoneNumber, password]):
-        return jsonify({'error': 'Missing fields'}), 400
+    if not all([name, email, password]):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
 
     existing = User.query.filter_by(email=email).first()
     if existing:
-        return jsonify({'error': 'Email already in use'}), 409
+        return jsonify({'success': False, 'error': 'Email already in use'}), 409
 
-    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    user = User(fullName=fullName, email=email, phoneNumber=phoneNumber, passwordHash=password_hash, role=role)
+    user = User(name=name, email=email, phone=phone, location=location, role=role)
+    user.set_password(password)
     db.session.add(user)
     db.session.commit()
 
-    if user.role == 'provider':
-        job_stat = JobStat(providerId=user.id)
-        db.session.add(job_stat)
-        db.session.commit()
-
-    access_token = create_access_token(identity={'id': user.id, 'role': user.role})
+    access_token = create_access_token(identity={'id': user.id})
     return jsonify({
-        'token': access_token,
-        'user': {'id': user.id, 'fullName': user.fullName, 'email': user.email, 'role': user.role}
-    })
+        'success': True,
+        'data': {
+            'token': access_token,
+            'user': user.to_dict()
+        },
+        'message': 'User registered successfully'
+    }), 201
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -44,14 +43,18 @@ def login():
     password = data.get('password')
 
     if not email or not password:
-        return jsonify({'error': 'Missing email/password'}), 400
+        return jsonify({'success': False, 'error': 'Missing email or password'}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user or not user.verify_password(password):
-        return jsonify({'error': 'Invalid credentials'}), 401
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
-    access_token = create_access_token(identity={'id': user.id, 'role': user.role})
+    access_token = create_access_token(identity={'id': user.id})
     return jsonify({
-        'token': access_token,
-        'user': {'id': user.id, 'fullName': user.fullName, 'email': user.email, 'role': user.role}
+        'success': True,
+        'data': {
+            'token': access_token,
+            'user': user.to_dict()
+        },
+        'message': 'Login successful'
     })

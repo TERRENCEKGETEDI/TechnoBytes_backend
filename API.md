@@ -141,6 +141,21 @@ This document outlines the API endpoints and Socket.IO events for the Service Ma
 - Listen for `message` events on conversation rooms
 - Update UI immediately when receiving messages
 
+## Verification
+
+### ID Photo Verification
+- **Endpoint**: `POST /api/verification/id_photo`
+- **Headers**: `Authorization: Bearer <token>`
+- **Body**:
+  ```json
+  {
+    "api_key": "string",
+    "id_number": "string",
+    "enquiry_reason": "string"
+  }
+  ```
+- **Response**: Forwards the response from the Home Affairs API
+
 ### Authentication
 - Include JWT token in all API requests via Authorization header
 - For Socket.IO, pass token in handshake auth
