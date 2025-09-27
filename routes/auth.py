@@ -1,21 +1,27 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
 from models import db, User
+from schemas import UserRegistrationSchema, UserLoginSchema
+from limiter import limiter
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit("5 per minute")
 def register():
     data = request.get_json()
-    name = data.get('fullName') or data.get('name')  # Support both field names
-    email = data.get('email')
-    password = data.get('password')
-    role = data.get('role', 'customer')
-    phone = data.get('phoneNumber') or data.get('phone')  # Support both field names
-    location = data.get('location')
+    schema = UserRegistrationSchema()
+    try:
+        validated_data = schema.load(data)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
-    if not all([name, email, password]):
-        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    name = validated_data.get('name')
+    email = validated_data.get('email')
+    password = validated_data.get('password')
+    role = validated_data.get('role', 'customer')
+    phone = validated_data.get('phone')
+    location = validated_data.get('location')
 
     existing = User.query.filter_by(email=email).first()
     if existing:
@@ -37,13 +43,17 @@ def register():
     }), 201
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("10 per minute")
 def login():
     data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
+    schema = UserLoginSchema()
+    try:
+        validated_data = schema.load(data)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
-    if not email or not password:
-        return jsonify({'success': False, 'error': 'Missing email or password'}), 400
+    email = validated_data.get('email')
+    password = validated_data.get('password')
 
     user = User.query.filter_by(email=email).first()
     if not user or not user.verify_password(password):

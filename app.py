@@ -3,6 +3,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from models import db
 from config import Config
+from limiter import limiter
 import os
 
 app = Flask(__name__)
@@ -11,6 +12,7 @@ app.config.from_object(Config)
 CORS(app)
 db.init_app(app)
 jwt = JWTManager(app)
+limiter.init_app(app)
 
 # Import blueprints
 from routes.auth import auth_bp
