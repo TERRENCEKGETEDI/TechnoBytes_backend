@@ -7,11 +7,11 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    name = data.get('name')
+    name = data.get('fullName') or data.get('name')  # Support both field names
     email = data.get('email')
     password = data.get('password')
     role = data.get('role', 'customer')
-    phone = data.get('phone')
+    phone = data.get('phoneNumber') or data.get('phone')  # Support both field names
     location = data.get('location')
 
     if not all([name, email, password]):
