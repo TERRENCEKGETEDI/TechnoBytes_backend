@@ -1,8 +1,50 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token
 from models import db, User
 from schemas import UserRegistrationSchema, UserLoginSchema
 from limiter import limiter
+import secrets
+from datetime import datetime, timedelta
+
+# In-memory storage for refresh tokens (use Redis or database in production)
+refresh_tokens = {}
+
+class RefreshTokenManager:
+    @staticmethod
+    def generate_refresh_token():
+        """Generate a secure random refresh token"""
+        return secrets.token_urlsafe(32)
+
+    @staticmethod
+    def store_refresh_token(user_id, refresh_token, expires_at):
+        """Store refresh token with expiration"""
+        refresh_tokens[refresh_token] = {
+            'user_id': user_id,
+            'expires_at': expires_at,
+            'created_at': datetime.utcnow()
+        }
+
+    @staticmethod
+    def validate_refresh_token(refresh_token):
+        """Validate refresh token and return user_id if valid"""
+        if refresh_token not in refresh_tokens:
+            return None
+
+        token_data = refresh_tokens[refresh_token]
+
+        # Check if token has expired
+        if datetime.utcnow() > token_data['expires_at']:
+            # Remove expired token
+            del refresh_tokens[refresh_token]
+            return None
+
+        return token_data['user_id']
+
+    @staticmethod
+    def revoke_refresh_token(refresh_token):
+        """Revoke a refresh token"""
+        if refresh_token in refresh_tokens:
+            del refresh_tokens[refresh_token]
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -33,10 +75,18 @@ def register():
     db.session.commit()
 
     access_token = create_access_token(identity={'id': user.id})
+    refresh_token = RefreshTokenManager.generate_refresh_token()
+    refresh_expires = datetime.utcnow() + timedelta(seconds=current_app.config['JWT_REFRESH_TOKEN_EXPIRES'])
+    RefreshTokenManager.store_refresh_token(user.id, refresh_token, refresh_expires)
+    access_expires = datetime.utcnow() + timedelta(seconds=current_app.config['JWT_ACCESS_TOKEN_EXPIRES'])
+    expires_in = int((access_expires - datetime.utcnow()).total_seconds())
+
     return jsonify({
         'success': True,
         'data': {
-            'token': access_token,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_in': expires_in,
             'user': user.to_dict()
         },
         'message': 'User registered successfully'
@@ -60,11 +110,108 @@ def login():
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
     access_token = create_access_token(identity={'id': user.id})
+    refresh_token = RefreshTokenManager.generate_refresh_token()
+    refresh_expires = datetime.utcnow() + timedelta(seconds=current_app.config['JWT_REFRESH_TOKEN_EXPIRES'])
+    RefreshTokenManager.store_refresh_token(user.id, refresh_token, refresh_expires)
+    access_expires = datetime.utcnow() + timedelta(seconds=current_app.config['JWT_ACCESS_TOKEN_EXPIRES'])
+    expires_in = int((access_expires - datetime.utcnow()).total_seconds())
+
     return jsonify({
         'success': True,
         'data': {
-            'token': access_token,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_in': expires_in,
             'user': user.to_dict()
         },
         'message': 'Login successful'
     })
+
+@auth_bp.route('/refresh', methods=['POST'])
+def refresh_token():
+    """
+    Refresh access token using refresh token
+
+    Expected JSON payload:
+    {
+        "refresh_token": "your_refresh_token_here"
+    }
+
+    Returns:
+    {
+        "success": true,
+        "data": {
+            "access_token": "new_access_token",
+            "refresh_token": "new_refresh_token",
+            "expires_in": 900
+        },
+        "message": "Token refreshed successfully"
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or 'refresh_token' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'Refresh token is required',
+                'data': None
+            }), 400
+
+        refresh_token = data['refresh_token']
+
+        # Validate refresh token
+        user_id = RefreshTokenManager.validate_refresh_token(refresh_token)
+
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid or expired refresh token',
+                'data': None
+            }), 401
+
+        # Revoke the old refresh token
+        RefreshTokenManager.revoke_refresh_token(refresh_token)
+
+        # Create new access token
+        access_token = create_access_token(
+            identity={'id': user_id},
+            additional_claims={
+                'type': 'access',
+                'user_id': user_id
+            }
+        )
+
+        # Create new refresh token
+        new_refresh_token = RefreshTokenManager.generate_refresh_token()
+
+        # Calculate expiration times
+        access_expires = datetime.utcnow() + timedelta(seconds=current_app.config['JWT_ACCESS_TOKEN_EXPIRES'])
+        refresh_expires = datetime.utcnow() + timedelta(seconds=current_app.config['JWT_REFRESH_TOKEN_EXPIRES'])
+
+        # Store new refresh token
+        RefreshTokenManager.store_refresh_token(
+            user_id,
+            new_refresh_token,
+            refresh_expires
+        )
+
+        # Calculate expires_in in seconds
+        expires_in = int((access_expires - datetime.utcnow()).total_seconds())
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'access_token': access_token,
+                'refresh_token': new_refresh_token,
+                'expires_in': expires_in
+            },
+            'message': 'Token refreshed successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error refreshing token: {str(e)}',
+            'data': None
+        }), 500
