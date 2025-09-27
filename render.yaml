@@ -1,7 +1,7 @@
 services:
   - type: web
     name: technobytes-backend
-    runtime: python3
+    runtime: python3.12
     buildCommand: pip install -r requirements.txt
     startCommand: python app.py
     envVars:
@@ -10,7 +10,7 @@ services:
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: HOME_AFFAIRS_API_BASE
-        value: https://api.example.com  # Replace with actual API base URL
+        value: www.omnicheck.co.za/webservice  # Replace with actual API base URL
     databases:
       - name: technobytes-db
         databaseName: technobytes
