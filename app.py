@@ -9,7 +9,7 @@ import os
 app = Flask(__name__)
 app.config.from_object(Config)
 
-CORS(app)
+CORS(app, origins="*")
 db.init_app(app)
 jwt = JWTManager(app)
 limiter.init_app(app)
