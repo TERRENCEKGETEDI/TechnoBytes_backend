@@ -12,3 +12,4 @@ class Config:
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
     HOME_AFFAIRS_API_BASE = os.getenv('HOME_AFFAIRS_API_BASE', 'https://api.example.com')
     PORT = int(os.getenv('PORT', 4000))
+    REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')

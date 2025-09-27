@@ -23,7 +23,7 @@ from routes.feedback import feedback_bp
 from routes.profile import profile_bp
 from routes.verification import verification_bp
 
-app.register_blueprint(auth_bp, url_prefix='/api/auth')
+app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(services_bp, url_prefix='/api/services')
 app.register_blueprint(requests_bp, url_prefix='/api/requests')
 app.register_blueprint(categories_bp, url_prefix='/api/categories')
