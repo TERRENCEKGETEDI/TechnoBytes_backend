@@ -12,6 +12,19 @@ app.config.from_object(Config)
 CORS(app, origins="*")
 db.init_app(app)
 jwt = JWTManager(app)
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error):
+    return jsonify({'success': False, 'error': 'Invalid token'}), 401
+
+@jwt.expired_token_loader
+def expired_token_callback():
+    return jsonify({'success': False, 'error': 'Token has expired'}), 401
+
+@jwt.unauthorized_loader
+def unauthorized_callback(error):
+    return jsonify({'success': False, 'error': 'Missing token'}), 401
+
 limiter.init_app(app)
 
 # Import blueprints
